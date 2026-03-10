@@ -14,7 +14,7 @@ model = AutoModelForCausalLM.from_pretrained(model, torch_dtype=torch.bfloat16).
 pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
 
 # Loading the BLEU metric
-sacrebleu = evaluate.load("sacrebleu")
+bleu = evaluate.load("bleu")
 
 res = [] # To store results for CSV output
 predictions = [] # To store Llama's translations
@@ -49,10 +49,10 @@ for i, item in enumerate(ds):
     references.append([expected_translation])
 
     # BLEU EVALUATION
-    results = sacrebleu.compute(predictions=[generated_translation], references=[[expected_translation]])  
+    results = bleu.compute(predictions=[generated_translation], references=[[expected_translation]], max_order=2)  
 
 
-    res.append([source_text, expected_translation, generated_translation, results['score']])
+    res.append([source_text, generated_translation, expected_translation, results['bleu']])
 
 
 csv_file_path = "bleu_results.csv"
