@@ -49,16 +49,18 @@ for i, item in enumerate(ds):
     references.append([expected_translation])
 
     # BLEU EVALUATION
-    results = bleu.compute(predictions=[generated_translation], references=[[expected_translation]], max_order=2)  
+    n2 = bleu.compute(predictions=[generated_translation], references=[[expected_translation]], max_order=2)  
+    n3 = bleu.compute(predictions=[generated_translation], references=[[expected_translation]], max_order=3)
+    n4 = bleu.compute(predictions=[generated_translation], references=[[expected_translation]], max_order=4)
 
 
-    res.append([source_text, generated_translation, expected_translation, results['bleu']])
+    res.append([source_text, generated_translation, expected_translation, n2['bleu'], n3['bleu'], n4['bleu']])
 
 
 csv_file_path = "bleu_results.csv"
 with open(csv_file_path, mode='w', newline='', encoding='utf-8') as file:
     writer = csv.writer(file)
-    writer.writerow(["Source Text (EN)", "Generated Translation (FR)", "Reference Translation (FR)", "BLEU Score"])
+    writer.writerow(["Source Text (EN)", "Generated Translation (FR)", "Reference Translation (FR)", "BLEU Score (n=2)", "BLEU Score (n=3)", "BLEU Score (n=4)"])
     writer.writerows(res)
 
 print(f"Results saved to {csv_file_path}")

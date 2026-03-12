@@ -1,4 +1,5 @@
 import json
+import time
 import csv
 import torch
 from google import genai
@@ -71,6 +72,7 @@ for i, item in enumerate(ds):
     generated_translation = outputs[0]["generated_text"][len(prompt):].strip()
 
     try:
+        time.sleep(6)
         gemini_eval = evaluate_translation(source_text, expected_translation, generated_translation)
         gemini_score = gemini_eval.get("score", 0)
         reasoning = gemini_eval.get("reason", "No reason provided.")

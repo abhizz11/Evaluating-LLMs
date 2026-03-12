@@ -1,0 +1,10 @@
+# Ignore the virtual environment (This will hide the 10,000 files!)
+venv/
+env/
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
+
+# Ignore data and results files
+*.csv
