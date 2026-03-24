@@ -8,18 +8,16 @@ from datasets import load_dataset
 model_name = "meta-llama/Llama-3.2-1B-Instruct"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForCausalLM.from_pretrained(model_name, dtype=torch.bfloat16).to("cuda")
-
-
 tokenizer.pad_token = tokenizer.eos_token
 
 
-
+# Loading the dataset and selecting the first 20 valid texts
 print("Loading dataset...")
 ds = load_dataset("Salesforce/wikitext", "wikitext-2-raw-v1", split="test")
 valid_texts = [text for text in ds["text"] if len(text.strip()) > 50][:20]
 
 
-
+# Forked this function from geeksforgeeks
 def compute_perplexity_for_batch(input_texts):
     inputs = tokenizer(
         input_texts, return_tensors="pt", padding=True, truncation=True
@@ -57,9 +55,10 @@ for key in perplexities:
 
 res.append(["Mean Perplexity", perplexities["mean_perplexity"]])
 
+# Printing out the results
 print(res)
 
-
+# Saving the results to a CSV file
 csv_file_path = 'perplexity.csv'
 with open(csv_file_path, mode='w', newline='', encoding='utf-8') as file:
     writer = csv.writer(file)
