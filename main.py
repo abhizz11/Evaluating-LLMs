@@ -53,6 +53,44 @@ def evaluate_gsm8k(tokenizer, pipe):
     return res
         
 
+
+# Evaluating General knowledge QA
+def evaluate_gk(tokenizer, pipe):
+    res = []
+    ds = load_dataset("MuskumPillerum/General-Knowledge", split="train[:20]")
+    
+    # Define a generator to prepare prompts for the pipeline
+    def data_generator():
+        for item in ds:
+            messages = [
+                {"role": "system", "content": "You are a GK expert. Answer the question based on your knowledge. Output only the answer in 10 words or less."},
+                {"role": "user", "content": item["Question"]}
+            ]
+            yield tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+
+    # Process in batches
+    outputs = pipe(
+        data_generator(), 
+        batch_size=4, 
+        max_new_tokens=512, 
+        do_sample=False,
+        pad_token_id=tokenizer.eos_token_id
+    )
+
+    for i, out in enumerate(outputs):
+        prompt = ds[i]["Question"]
+        generated_text = out[0]["generated_text"]
+        answer = ds[i]["Answer"]
+        print(prompt, generated_text, answer)
+        
+        # Logic to extract only the new response
+        response_only = generated_text.split("assistant\n")[-1].strip()
+        
+        res.append([prompt, response_only, answer])
+
+    return res
+
+
 # Translation evaluation using BLEU with batched inference
 def evaluate_translation_bleu(tokenizer, pipe):
     # Load metric and dataset
@@ -167,6 +205,7 @@ def evaluate_summarization_rouge(tokenizer, pipe):
     return results
 
 
+
 # Perplexity evaluation using a batch processing approach
 def compute_perplexity_for_batch(input_texts):
     model_name = "Qwen/Qwen2.5-0.5B-Instruct"
@@ -214,24 +253,101 @@ def perplexity():
     res.append(["Mean Perplexity", perplexities["mean_perplexity"]])
     return res
 
+
+
+# 1. Load the Judge Model (Llama 3.2 1B)
+def load_llama_judge(model_name="meta-llama/Llama-3.2-1B-Instruct"):
+    print(f"Loading judge model {model_name}...")
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer.pad_token = tokenizer.eos_token
+    model = AutoModelForCausalLM.from_pretrained(model_name, dtype=torch.bfloat16).to("cuda")
+    pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
+    return tokenizer, pipe
+
+
+# 2. Universal Judge Function
+def llama_judge_outputs(tokenizer, pipe, qwen_results, task_type):
+    judge_results = []
+    
+    # Define task-specific rubrics
+    rubrics = {
+        "math": "You are an expert math grader. Compare the Model Answer to the Reference. Output strictly a single integer from 0 to 5, where 5 is a perfectly correct step-by-step derivation and 0 is completely wrong. Output NOTHING else.",
+        "translation": "You are a professional linguist. Rate the Model Answer's translation of the Source against the Reference. Output strictly a single integer from 1 to 5, where 5 is flawless and 1 is incomprehensible. Output NOTHING else.",
+        "summarization": "You are an expert editor. Rate the Model Answer's summary of the Source against the Reference. Consider accuracy, missing details, and conciseness. Output strictly a single integer from 1 to 5. Output NOTHING else.",
+        "general-qa": "You are an expert evaluator. Rate the Model Answer from 1 to 5 based on correctness and completeness compared to the Reference. Output only the integer."
+    }
+    
+    sys_prompt = rubrics.get(task_type, "You are an expert evaluator. Rate the Model Answer from 1 to 5. Output only the integer.")
+
+    def prompt_generator():
+        for row in qwen_results:
+            source = row[0]
+            prediction = row[1]
+            
+            user_msg = f"Source/Prompt:\n{source}\n\n\nModel Answer:\n{prediction}\n\nScore (integer only):"
+            
+            messages = [
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_msg}
+            ]
+            yield tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+
+    # Batched inference for the judge
+    outputs = pipe(
+        prompt_generator(),
+        batch_size=8,
+        max_new_tokens=5,
+        do_sample=False,
+        return_full_text=False
+    )
+
+    for i, out in enumerate(outputs):
+        # Extract Llama's score
+        judge_score = out[0]["generated_text"].strip()
+        
+        # Append Llama's score to the original Qwen row data
+        new_row = qwen_results[i].copy()
+        new_row.append(f"Llama_Score: {judge_score}")
+        judge_results.append(new_row)
+        
+    return judge_results
+
+
+
+
 # Write data to CSV file
 def write_to_csv(data, csv_file_path):
     with open(csv_file_path, mode='w', newline='', encoding='utf-8') as file:
         writer = csv.writer(file)
         writer.writerows(data)
 
+
+
 model = "Qwen/Qwen2.5-0.5B-Instruct"
 tokenizer, pipe = loading_model(model)
 
+results = evaluate_gk(tokenizer, pipe)
+
 # math_results = evaluate_gsm8k(tokenizer, pipe)
+tk, pipe = load_llama_judge()
+judge_gk_results = llama_judge_outputs(tk, pipe, results, task_type="general-qa")
+write_to_csv(judge_gk_results, "gk_judge_results.csv")
+
+
+# judge_math_results = llama_judge_outputs(tk, pipe, math_results, task_type="math")
+# write_to_csv(judge_math_results, "gsm8k_judge_results.csv")
+
 # write_to_csv(math_results, "gsm8k_results.csv")
 # bleu_results = evaluate_translation_bleu(tokenizer, pipe)
 # write_to_csv(bleu_results, "bleu_results.csv")
 # rouge_results = evaluate_summarization_rouge(tokenizer, pipe)
 # write_to_csv(rouge_results, "rouge_results.csv")
 
-perplexity_results = perplexity()
-write_to_csv(perplexity_results, "perplexity_results.csv")
+
+
+
+# perplexity_results = perplexity()
+# write_to_csv(perplexity_results, "perplexity_results.csv")
 
 
 
